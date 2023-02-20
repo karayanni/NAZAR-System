@@ -10,9 +10,21 @@ from FrequentItemSetDataClass import FrequentItemSet
 # jsonsable_result = JSONSerializer.serialize(final_items)
 # from dataclasses_serialization.json import JSONSerializer
 
+schema_name = 'local_schema'
+host_name = 'localhost'
+db_user = 'root'
+table_name = 'drift_log'
 
 # If this is set to False, the script will choose Quebec over not Quebec + Fog (in case they have the same metrics)
 DELETE_SMALL_DUPLICATE = False
+USE_REMOTE_DB = False
+
+
+if USE_REMOTE_DB:
+    db_user = "admin"
+    host_name = "freedriftlogdb.chgu9pxp8lci.us-east-1.rds.amazonaws.com"
+    schema_name = "drift_log_schema"
+    table_name = 'drift_log_hundred'
 
 
 def get_set_to_delete(items1: FrequentItemSet, items2: FrequentItemSet):
@@ -42,13 +54,13 @@ def get_set_to_delete(items1: FrequentItemSet, items2: FrequentItemSet):
 
 # TODO: change this to connect to AWS MySQL DB - If needed change schema name and table name accordingly.
 def GetDBContext():
-    return mysql.connector.connect(user='root', password='nadernader', host='localhost', database='local_schema')
+    return mysql.connector.connect(user=db_user, password='nadernader', host=host_name, database=schema_name)
 
 
 def GetTotalRowsCount(general_db_filter_query):
     cnx = GetDBContext()
     cursor = cnx.cursor()
-    cursor.execute("SELECT Count(*) FROM local_schema.drift_log where " + general_db_filter_query)
+    cursor.execute("SELECT Count(*) FROM " + schema_name + "." + table_name + " where " + general_db_filter_query)
     res = cursor.fetchone()
 
     cursor.close()
@@ -61,7 +73,7 @@ def GetTotalOutLinersCount(outliners_sql_filter_query, general_db_filter_query):
     cnx = GetDBContext()
     cursor = cnx.cursor()
     cursor.execute(
-        "SELECT Count(*) FROM local_schema.drift_log where " + general_db_filter_query + " AND " + outliners_sql_filter_query)
+        "SELECT Count(*) FROM " + schema_name + "." + table_name + " where " + general_db_filter_query + " AND " + outliners_sql_filter_query)
     res = cursor.fetchone()
 
     cursor.close()
@@ -70,7 +82,7 @@ def GetTotalOutLinersCount(outliners_sql_filter_query, general_db_filter_query):
     return res[0]
 
 
-def GetOutLinersCountGroupedByProvidedAttributes(attributes_to_group_by: list | set, outliners_sql_filter_query: str,
+def GetOutLinersCountGroupedByProvidedAttributes(attributes_to_group_by, outliners_sql_filter_query: str,
                                                  general_db_filter_query: str) -> list[tuple]:
     """
     Queries the DB grouping yb the provided attributes where drift exists.
@@ -82,7 +94,7 @@ def GetOutLinersCountGroupedByProvidedAttributes(attributes_to_group_by: list | 
     cursor = cnx.cursor()
     attr_sql_str = ', '.join(attributes_to_group_by)
     cursor.execute(
-        "SELECT COUNT(*)," + attr_sql_str + " FROM local_schema.drift_log where " + general_db_filter_query + " AND " + outliners_sql_filter_query + " group by " + attr_sql_str)
+        "SELECT COUNT(*)," + attr_sql_str + " FROM " + schema_name + "." + table_name + " where " + general_db_filter_query + " AND " + outliners_sql_filter_query + " group by " + attr_sql_str)
     res = cursor.fetchall()
 
     cursor.close()
@@ -107,7 +119,7 @@ def GetCountInLinersProvidedAttributes(attribute_names: list[str], attribute_val
 
     attr_sql_str = ' AND '.join(attr_sql_conditions)
     cursor.execute(
-        "SELECT COUNT(*) FROM local_schema.drift_log where " + attr_sql_str + " AND " + general_db_filter_query + " AND NOT " + outliners_sql_filter_query)
+        "SELECT COUNT(*) FROM " + schema_name + "." + table_name + " where " + attr_sql_str + " AND " + general_db_filter_query + " AND NOT " + outliners_sql_filter_query)
     res = cursor.fetchone()
 
     cursor.close()
@@ -376,7 +388,7 @@ def get_distinct_values_of_field(att: str):
     cnx = GetDBContext()
     cursor = cnx.cursor()
     cursor.execute(
-        "SELECT DISTINCT " + att + " FROM local_schema.drift_log")
+        "SELECT DISTINCT " + att + " FROM " + schema_name + "." + table_name)
     res = cursor.fetchall()
 
     cursor.close()
@@ -387,7 +399,7 @@ def get_distinct_values_of_field(att: str):
 def reset_counter_factual_drift_col():
     cnx = GetDBContext()
     cursor = cnx.cursor()
-    cursor.execute("UPDATE local_schema.drift_log SET counter_drift = signal_1or2")
+    cursor.execute("UPDATE " + schema_name + "." + table_name + " SET counter_drift = signal_1or2")
     res = cursor.fetchall()
 
     cnx.commit()
@@ -400,7 +412,7 @@ def set_counter_drift_to_zero(attribute_name, attribute_value):
     cnx = GetDBContext()
     cursor = cnx.cursor()
     cursor.execute(
-        "UPDATE local_schema.drift_log SET counter_drift = '0' WHERE " + attribute_name + " = '" + attribute_value + "'")
+        "UPDATE " + schema_name + "." + table_name + " SET counter_drift = '0' WHERE " + attribute_name + " = '" + attribute_value + "'")
     res = cursor.fetchall()
 
     cnx.commit()
