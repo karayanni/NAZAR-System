@@ -17,14 +17,16 @@ table_name = 'drift_log'
 
 # If this is set to False, the script will choose Quebec over not Quebec + Fog (in case they have the same metrics)
 DELETE_SMALL_DUPLICATE = False
-USE_REMOTE_DB = False
+USE_REMOTE_DB = True
+free_db = False
 
+host_db_uri = "nazardriftlog.chgu9pxp8lci.us-east-1.rds.amazonaws.com" if not free_db else 'freedriftlogdb.chgu9pxp8lci.us-east-1.rds.amazonaws.com'
 
 if USE_REMOTE_DB:
     db_user = "admin"
-    host_name = "freedriftlogdb.chgu9pxp8lci.us-east-1.rds.amazonaws.com"
+    host_name = host_db_uri
     schema_name = "drift_log_schema"
-    table_name = 'drift_log_hundred'
+    table_name = 'drift_log_flex'
 
 
 def get_set_to_delete(items1: FrequentItemSet, items2: FrequentItemSet):

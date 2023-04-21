@@ -1,15 +1,18 @@
 from ExplanationsExtractor import get_explanations_ordered_list, get_attributes_values, reset_counter_factual_drift_col, \
-    set_counter_drift_to_zero
+    set_counter_drift_to_zero, GetTotalOutLinersCount
 from collections import OrderedDict
 from itertools import chain, combinations
+import time
+
 
 attributes_mappings = ['weather', 'location', 'model_type']
 vals_attr_mappings = get_attributes_values(attributes_mappings)
+diff_attributes = ['weather', 'location', 'id', 'model_type']
 
 
 def get_explanations_aux():
     return get_explanations_ordered_list(
-        attributes=['weather', 'location', 'id', 'model_type'],
+        attributes=diff_attributes,
         min_occurrences=0.01,
         min_support=0.01,
         min_confidence=0.51,
@@ -18,6 +21,22 @@ def get_explanations_aux():
         outliners_sql_filter_query="counter_drift = 1",
         max_length=3,
         debug_print=False)
+
+
+def did_att_survive(explanation):
+    min_support = 0.01
+    general_db_filter_query = "date <= '2/1/2020' "
+    outliners_sql_filter_query = "counter_drift = 1"
+
+    query_addition = " AND "
+    for attribute_value in explanation:
+        attribute_key = get_DB_attribute_name_from_value(attribute_value)
+        query_addition += f'{attribute_key} = \'{attribute_value}\''
+
+    new_query = general_db_filter_query+query_addition
+    total_outliners_count = GetTotalOutLinersCount(outliners_sql_filter_query, outliners_sql_filter_query)
+    att_outliners_count = GetTotalOutLinersCount(outliners_sql_filter_query, new_query)
+    return (att_outliners_count/total_outliners_count) >= min_support
 
 
 def get_DB_attribute_name_from_value(attr_value):
@@ -69,6 +88,7 @@ def get_ordered_dic(e_list_param):
     return finetune_dir
 
 
+# TODO: reduce complexity by not rerunning DIFF agagin.
 def run_counter_factual_analysis(finetune_dir: dict):
     reset_counter_factual_drift_col()
 
@@ -82,7 +102,7 @@ def run_counter_factual_analysis(finetune_dir: dict):
     survived_sub_groups = all_subgroups
     # iterate over te explanations ordered by risk.
     for explanation in finetune_dir.keys():
-        if explanation in survived_explanations_after_counter_factual_run:
+        if did_att_survive(explanation):  # in survived_explanations_after_counter_factual_run:
             final_plan_keys.append(explanation)
 
             for attribute_value in explanation:
@@ -90,14 +110,17 @@ def run_counter_factual_analysis(finetune_dir: dict):
                 set_counter_drift_to_zero(attribute_key, attribute_value)
 
             # Here now we have the update DB with 0 for counter_drift
-            explanation_after_cfa = set(get_explanations_aux())
+            # TODO: switch this with a simple check for the next element instead of the whole DIFF again.
+            # explanation_after_cfa = set(get_explanations_aux())
 
-            survived_explanations_after_counter_factual_run = explanation_after_cfa.intersection(finetune_dir.keys())
-            survived_sub_groups = explanation_after_cfa.intersection(all_subgroups)
+            # survived_explanations_after_counter_factual_run is **tmp_keys**
+            # survived_explanations_after_counter_factual_run = explanation_after_cfa.intersection(finetune_dir.keys())
+            # survived_sub_groups = explanation_after_cfa.intersection(all_subgroups)
 
         # in case the explanation doesn't survive the CFA.
         # we still want to check regarding the sub-explanations.
         else:
+            # todo: add updated condition with better performance here
             survived_sub_explanations = set(finetune_dir[explanation]).intersection(survived_sub_groups)
 
             # not empty if a sub-explanation survived the CFA! - if not, do nothing.
@@ -136,6 +159,9 @@ def run_counter_factual_analysis(finetune_dir: dict):
 
 
 def CreateTuningConfigurations(attributes: list[str]):
+    global diff_attributes
+    diff_attributes = attributes
+
     print("starting planner - resetting DB settings")
     reset_counter_factual_drift_col()
 
@@ -149,9 +175,12 @@ def CreateTuningConfigurations(attributes: list[str]):
 
 
 if __name__ == '__main__':
+    reset_counter_factual_drift_col()
     explanation_attributes = ['weather', 'location', 'id', 'model_type']
+    start_time = time.time()
 
     tuning_configurations = CreateTuningConfigurations(explanation_attributes)
 
-    print("Tuning Planner Completed")
+    print(f'Tuning Planner Completed in: {time.time() - start_time}  seconds')
+
     print(tuning_configurations)
